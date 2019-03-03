@@ -27,7 +27,7 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
         for step in range(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
-                x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter, labels_resize_factor=1)
+                x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter, labels_resize_factor=labels_resize_factor)
                 x = preprocess(x, mode=preprocess_mode)
                 [x, y, mask] = convert_to_tensors([x, y, mask])
                 if aux_loss:
@@ -35,7 +35,7 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask) +\
                            tf.losses.softmax_cross_entropy(y, aux_y_, weights=mask)  # compute loss
                 else:
-                    y_ = model(x, training=True, aux_loss=aux_loss, upsample=2)  # get output of the model
+                    y_ = model(x, training=True, aux_loss=aux_loss, upsample=1)  # get output of the model
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)  # compute loss
 
 
@@ -75,8 +75,8 @@ if __name__ == "__main__":
     n_classes = 11
     batch_size = 1
     epochs = 1000
-    width = 512
-    height = 256
+    width = 1024
+    height = 512
     labels_resize_factor = 2
     channels = 3
     lr = 1e-4
