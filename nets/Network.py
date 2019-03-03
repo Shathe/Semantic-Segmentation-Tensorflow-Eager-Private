@@ -157,6 +157,64 @@ class BiseNet(tf.keras.Model):
         else:
             return x
 
+class Dilated_net(tf.keras.Model):
+    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
+        super(Dilated_net, self).__init__(**kwargs)
+        base_filter = 32
+        self.conv1 = Conv_BN(filters=base_filter, kernel_size=3, strides=2)
+        self.encoder_conv_1 = FeatureGeneration(filters=base_filter, kernel_size=3, dilation_rate=1, blocks=2)
+        self.downsample_1 = DepthwiseConv_BN(filters=base_filter, kernel_size=3, strides=2)
+        self.encoder_conv_2 = FeatureGeneration(filters=base_filter*2, kernel_size=3, dilation_rate=1, blocks=4)
+        self.downsample_2 = DepthwiseConv_BN(filters=base_filter*2, kernel_size=3, strides=2)
+        self.encoder_conv_3 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=1, blocks=5)
+        self.encoder_conv_4 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=2, blocks=4)
+        self.encoder_conv_5 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=4, blocks=3)
+        self.encoder_conv_6 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=8, blocks=2)
+        self.encoder_conv_7 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=16, blocks=1)
+
+        self.adap_encoder_1 = EncoderAdaption(filters=base_filter*2, kernel_size=3, dilation_rate=1)
+
+
+        #DepthwiseConv_BN
+        self.decoder_conv_1 = FeatureGeneration(filters=base_filter*2, kernel_size=3, dilation_rate=1, blocks=6)
+        self.decoder_conv_2 = FeatureGeneration(filters=base_filter, kernel_size=3, dilation_rate=1, blocks=3)
+        self.aspp = ASPP_2(filters=base_filter*2, kernel_size=3)
+
+        self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+        self.conv_logits_aux = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+
+    def call(self, inputs, training=None, mask=None, aux_loss=False, upsample=1):
+
+        x = self.conv1(inputs, training=training)
+        x = self.encoder_conv_1(x, training=training)
+        x_enc = self.downsample_1(x, training=training)
+        x = self.encoder_conv_2(x_enc, training=training)
+        x = self.downsample_2(x, training=training)
+        x1 = self.encoder_conv_3(x, training=training)
+        x = x1 + self.encoder_conv_4(x1, training=training)
+        x += self.encoder_conv_5(x + x1, training=training)
+        x += self.encoder_conv_6(x + x1, training=training)
+        x += self.encoder_conv_7(x + x1, training=training)
+        x = upsampling(x + x1, scale=2)
+        x = self.decoder_conv_1(x, training=training)
+
+        x += self.adap_encoder_1(x_enc, training=training)
+
+        x = self.aspp(x, training=training, operation='sum')  # 128
+        x_aux = self.conv_logits_aux(x)
+        x_aux = upsampling(x_aux, scale=2)
+        x_aux_out = upsampling(x_aux, scale=2)
+
+        x = upsampling(x, scale=2)
+        x = self.decoder_conv_2(tf.concat((x, x_aux), -1), training=training)  # 64
+        x = self.conv_logits(tf.concat((x, x_aux), -1))
+        x = upsampling(x, scale=2)
+
+        if aux_loss:
+            return x, x_aux_out
+        else:
+            return x
+
 
 
 class Segception_small(tf.keras.Model):
@@ -188,7 +246,7 @@ class Segception_small(tf.keras.Model):
 
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
-    def call(self, inputs, training=None, mask=None, aux_loss=False):
+    def call(self, inputs, training=None, mask=None, aux_loss=False,  upsample=1):
 
         outputs = self.model_output(inputs, training=training)
         # add activations to the ourputs of the model
@@ -291,10 +349,11 @@ class DepthwiseConv_BN(tf.keras.Model):
                                   dilation_rate=dilation_rate)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, training=None, activation=True):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
-        x = layers.LeakyReLU(alpha=0.3)(x)
+        if activation:
+            x = layers.LeakyReLU(alpha=0.3)(x)
 
         return x
 
@@ -323,6 +382,25 @@ class ERFNetModule(tf.keras.Model):
     def __init__(self, filters, dilation_rate=1, dropout=0.3):
         super(ERFNetModule, self).__init__()
 
+        self.conv1 = DepthwiseConv_BN(filters, kernel_size=3, dilation_rate=1)
+        self.conv2 = DepthwiseConv_BN(filters, kernel_size=3, dilation_rate=dilation_rate)
+
+
+
+    def call(self, inputs, training=None):
+
+        x = self.conv1(inputs, training=training, activation=False)
+        x2 = layers.ReLU()(x+ inputs)
+
+        x = self.conv2(x2, training=training, activation=False)
+        x = layers.ReLU()(x+ x2)
+
+        return x
+'''
+class ERFNetModule(tf.keras.Model):
+    def __init__(self, filters, dilation_rate=1, dropout=0.3):
+        super(ERFNetModule, self).__init__()
+
         self.conv1 = Conv_BN(filters, kernel_size=[3, 1], dilation_rate=1)
         self.conv2 = Conv_BN(filters, kernel_size=[1, 3], dilation_rate=1)
         self.conv3 = Conv_BN(filters, kernel_size=[3, 1], dilation_rate=dilation_rate)
@@ -338,22 +416,29 @@ class ERFNetModule(tf.keras.Model):
         x = self.dropout_layer(x, training=training)
 
         return x + inputs
-
-
-
+'''
 class ERFNetDownsample(tf.keras.Model):
     def __init__(self, filters):
         super(ERFNetDownsample, self).__init__()
+        self.conv = DepthwiseConv_BN(filters, kernel_size=3, dilation_rate=1, strides=2)
+
+
+    def call(self, inputs, training=None):
+
+        x = self.conv(inputs, training=training)
+        return x
+
+
+class ERFNetDownsample_rgb(tf.keras.Model):
+    def __init__(self, filters):
+        super(ERFNetDownsample_rgb, self).__init__()
         self.conv = Conv_BN(filters, kernel_size=3, dilation_rate=1, strides=2)
 
 
     def call(self, inputs, training=None):
 
         x = self.conv(inputs, training=training)
-        x2 = tf.layers.max_pooling2d(inputs, pool_size=2, strides=2)
-        x = tf.concat((x, x2), axis=-1)
         return x
-
 
 
 class ERFNetUpsample(tf.keras.Model):
@@ -373,14 +458,16 @@ class ERFNet(tf.keras.Model):
     def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet'):
         super(ERFNet, self).__init__()
 
-        self.down1 = ERFNetDownsample(16-3)
-        self.down2 = ERFNetDownsample(64-16)
+        self.down1_1 = ERFNetDownsample_rgb(16)
+        self.down2_1 = ERFNetDownsample(64)
+        self.down1 = ERFNetDownsample_rgb(16)
+        self.down2 = ERFNetDownsample(64)
         self.mod1 = ERFNetModule(64, dilation_rate=1)
         self.mod2 = ERFNetModule(64, dilation_rate=1)
         self.mod3 = ERFNetModule(64, dilation_rate=1)
         self.mod4 = ERFNetModule(64, dilation_rate=1)
         self.mod5 = ERFNetModule(64, dilation_rate=1)
-        self.down3 = ERFNetDownsample(128-64)
+        self.down3 = ERFNetDownsample(128)
         self.mod6 = ERFNetModule(128, dilation_rate=2)
         self.mod7 = ERFNetModule(128, dilation_rate=4)
         self.mod8 = ERFNetModule(128, dilation_rate=8)
@@ -392,12 +479,12 @@ class ERFNet(tf.keras.Model):
         self.up1 = ERFNetUpsample(64)
         self.mod14 = ERFNetModule(64, dilation_rate=1)
         self.mod15 = ERFNetModule(64, dilation_rate=1)
-        self.up2 = ERFNetUpsample(16)
-        self.mod16 = ERFNetModule(16, dilation_rate=1)
-        self.mod17 = ERFNetModule(16, dilation_rate=1)
         self.up3 = ERFNetUpsample(num_classes)
 
-    def call(self, inputs, training=None, aux_loss=False):
+    def call(self, inputs, training=None, aux_loss=False, upsample=1):
+
+        b = self.down1_1(inputs, training=training)
+        b = self.down2_1(b, training=training)
 
         x = self.down1(inputs, training=training)
         x = self.down2(x, training=training)
@@ -415,21 +502,18 @@ class ERFNet(tf.keras.Model):
         x = self.mod11(x, training=training)
         x = self.mod12(x, training=training)
         x = self.mod13(x, training=training)
-        x = self.up1(x, training=training)
+        x = self.up1(x, training=training) + b
         x = self.mod14(x, training=training)
         x = self.mod15(x, training=training)
-        x = self.up2(x, training=training)
-        x = self.mod16(x, training=training)
-        x = self.mod17(x, training=training)
         x = self.up3(x, training=training, last=True)
 
+        if upsample > 1:
+            x = upsampling(x, upsample)
+
         if aux_loss:
-            return x,x
+            return x, x
         else:
             return x
-
-
-
 
 class ShatheBlock(tf.keras.Model):
     def __init__(self, filters, kernel_size,  dilation_rate=1, bottleneck=2):
@@ -589,7 +673,7 @@ class FeatureGeneration(tf.keras.Model):
 
         self.conv0 = Conv_BN(self.filters, kernel_size=1)
         self.blocks = []
-        for n in xrange(blocks):
+        for n in range(blocks):
             self.blocks = self.blocks + [
                 ShatheBlock(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)]
 

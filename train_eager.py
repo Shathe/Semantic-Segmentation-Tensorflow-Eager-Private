@@ -27,7 +27,7 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
         for step in range(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
-                x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter, labels_resize_factor=labels_resize_factor)
+                x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter, labels_resize_factor=1)
                 x = preprocess(x, mode=preprocess_mode)
                 [x, y, mask] = convert_to_tensors([x, y, mask])
                 if aux_loss:
@@ -35,7 +35,7 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask) +\
                            tf.losses.softmax_cross_entropy(y, aux_y_, weights=mask)  # compute loss
                 else:
-                    y_ = model(x, training=True, aux_loss=aux_loss, upsample=1)  # get output of the model
+                    y_ = model(x, training=True, aux_loss=aux_loss, upsample=2)  # get output of the model
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)  # compute loss
 
 
@@ -47,12 +47,12 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
 
         if evaluation:
             # get metrics
-            #train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
+            train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
             test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
                                               scales=[1], preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
 
-            #print('Train accuracy: ' + str(train_acc.numpy()))
-            #print('Train miou: ' + str(train_miou))
+            print('Train accuracy: ' + str(train_acc.numpy()))
+            print('Train miou: ' + str(train_miou))
             print('Test accuracy: ' + str(test_acc.numpy()))
             print('Test miou: ' + str(test_miou))
             print('')
@@ -73,13 +73,13 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
 
     n_classes = 11
-    batch_size = 4
+    batch_size = 1
     epochs = 1000
-    width = 960
-    height = 720
+    width = 512
+    height = 256
     labels_resize_factor = 2
     channels = 3
-    lr = 1e-3
+    lr = 1e-4
     name_best_model = 'weights/camvid/best'
     dataset_path = 'Datasets/camvid'
     preprocess_mode = 'imagenet'  #possible values 'imagenet', 'normalize',None
@@ -88,14 +88,15 @@ if __name__ == "__main__":
                            width=width, height=height, channels=channels, median_frequency=0.0)
 
     # build model and optimizer
-    model = MiniNetv2.MiniNetv2(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
+    #model = MiniNetv2.MiniNetv2(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
+    model = Segception.ERFNet(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
 
     # optimizer
     learning_rate = tfe.Variable(lr)
     optimizer = tf.train.AdamOptimizer(learning_rate)
 
     # Init models (optional, just for get_params function)
-    init_model(model, input_shape=(batch_size, width, height, channels))
+    init_model(model, input_shape=(batch_size, height, width, channels))
 
     variables_to_restore = model.variables
     variables_to_save = model.variables

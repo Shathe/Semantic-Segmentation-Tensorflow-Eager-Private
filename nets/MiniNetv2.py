@@ -14,26 +14,26 @@ def reshape_into(inputs, input_to_copy):
 
 
 # convolution
-def conv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=False):
+def convolution(filters, kernel_size, strides=1, dilation_rate=1, use_bias=True):
     return layers.Conv2D(filters, kernel_size, strides=strides, padding='same', use_bias=use_bias,
                          kernel_regularizer=regularizers.l2(l=0.0003), dilation_rate=dilation_rate)
 
 
 # Traspose convolution
-def transposeConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=False):
+def transposeConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=True):
     return layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding='same', use_bias=use_bias,
                                   kernel_regularizer=regularizers.l2(l=0.0003), dilation_rate=dilation_rate)
 
 
 # Depthwise convolution
-def depthwiseConv(kernel_size, strides=1, depth_multiplier=1, dilation_rate=1, use_bias=False):
+def depthwiseConv(kernel_size, strides=1, depth_multiplier=1, dilation_rate=1, use_bias=True):
     return layers.DepthwiseConv2D(kernel_size, strides=strides, depth_multiplier=depth_multiplier,
                                   padding='same', use_bias=use_bias, kernel_regularizer=regularizers.l2(l=0.0003),
                                   dilation_rate=dilation_rate)
 
 
 # Depthwise convolution
-def separableConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=False):
+def separableConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=True):
     return layers.SeparableConv2D(filters, kernel_size, strides=strides, padding='same', use_bias=use_bias,
                                   depthwise_regularizer=regularizers.l2(l=0.0003),
                                   pointwise_regularizer=regularizers.l2(l=0.0003), dilation_rate=dilation_rate)
@@ -47,15 +47,16 @@ class DepthwiseConv_BN(tf.keras.Model):
         self.kernel_size = kernel_size
         self.strides = strides
 
+        # separableConv
         self.conv = separableConv(filters=filters, kernel_size=kernel_size, strides=strides,
                                   dilation_rate=dilation_rate)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 
-    def call(self, inputs, training=None, relu=True):
+    def call(self, inputs, training=None, activation=True):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
-        if relu:
-            x = tf.keras.activations.relu(x, alpha=0.0, max_value=None, threshold=0)
+        if activation:
+            x = layers.ReLU()(x)
 
         return x
 
@@ -69,14 +70,14 @@ class Conv_BN(tf.keras.Model):
         self.kernel_size = kernel_size
         self.strides = strides
 
-        self.conv = conv(filters=filters, kernel_size=kernel_size, strides=strides, dilation_rate=dilation_rate)
+        self.conv = convolution(filters=filters, kernel_size=kernel_size, strides=strides, dilation_rate=dilation_rate)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 
     def call(self, inputs, training=None, activation=True):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
         if activation:
-            x = layers.LeakyReLU(alpha=0.3)(x)
+            x = layers.ReLU()(x)
 
         return x
 
@@ -90,8 +91,8 @@ class Residual_SeparableConv(tf.keras.Model):
 
     def call(self, inputs, training=None):
 
-        x = self.conv(inputs, training=training, relu=False)
-        x = tf.keras.activations.relu(x + inputs, alpha=0.0, max_value=None, threshold=0)
+        x = self.conv(inputs, training=training, activation=False)
+        x = layers.ReLU()(x + inputs)
 
         return x
 
@@ -140,7 +141,7 @@ class MininetV2Upsample(tf.keras.Model):
         x = self.conv(inputs)
         if not last:
             x = self.bn(x, training=training)
-            x = tf.keras.activations.relu(x, alpha=0.0, max_value=None, threshold=0)
+            x = layers.ReLU()(x)
 
         return x
 
@@ -167,12 +168,13 @@ class MiniNetv2(tf.keras.Model):
         self.module11 = MininetV2Module(128, 3, strides=1, dilation_rate=2)
         self.module12 = MininetV2Module(128, 3, strides=1, dilation_rate=8)
         self.module13 = MininetV2Module(128, 3, strides=1, dilation_rate=16)
-        self.up1 = MininetV2Upsample(64, 3, strides=2)  # call last=False
-        self.module14 = MininetV2Module(64, 3, strides=1, dilation_rate=8)
-        self.module15 = MininetV2Module(64, 3, strides=1, dilation_rate=8)
-        self.up_last = MininetV2Upsample(num_classes, 3, strides=2)  # call last=False
+        self.up1 = MininetV2Upsample(64, 3, strides=2)
+        self.module14 = MininetV2Module(64, 3, strides=1, dilation_rate=1)
+        self.module15 = MininetV2Module(64, 3, strides=1, dilation_rate=1)
+        self.up_last = MininetV2Upsample(num_classes, 3, strides=2)
+        self.up_last2 = MininetV2Upsample(num_classes, 3, strides=2)
 
-    def call(self, inputs, training=None, mask=None, aux_loss=False, upsample=1):
+    def call(self, inputs, training=None, mask=None, aux_loss=False, upsample=2):
         branch_2 = self.down1_2(inputs, training=training)
         branch_2 = self.down2_2(branch_2, training=training)
 
@@ -195,8 +197,71 @@ class MiniNetv2(tf.keras.Model):
         x = branch_2 + self.up1(x, training=training)
         x = self.module14(x, training=training)
         x = self.module15(x, training=training)
-        x = self.up_last(x, last=True, training=training)
+        x = self.up_last(x, training=training)
+        x = self.up_last2(x, last=True, training=training)
 
+
+        if upsample > 1:
+            x = upsampling(x, upsample)
+
+        if aux_loss:
+            return x, x
+        else:
+            return x
+
+class MiniNetv3(tf.keras.Model):
+    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
+        super(MiniNetv3, self).__init__(**kwargs)
+
+        self.down1 = MininetV2Downsample(16, depthwise=False)
+        self.down2 = MininetV2Downsample(64, depthwise=False)
+        self.module1 = MininetV2Module(64, 3, strides=1, dilation_rate=1)
+        self.module2 = MininetV2Module(64, 3, strides=1, dilation_rate=1)
+        self.down3 = MininetV2Downsample(128, depthwise=False)
+        self.module6 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.module7 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.module8 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.module9 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.down4 = MininetV2Downsample(256, depthwise=False)
+        self.module10 = MininetV2Module(256, 3, strides=1, dilation_rate=1)
+        self.module11 = MininetV2Module(256, 3, strides=1, dilation_rate=1)
+        self.module12 = MininetV2Module(256, 3, strides=1, dilation_rate=1)
+        self.module13 = MininetV2Module(256, 3, strides=1, dilation_rate=1)
+        self.up1 = MininetV2Upsample(128, 3, strides=2)
+        self.module14 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.module15 = MininetV2Module(128, 3, strides=1, dilation_rate=1)
+        self.up2 = MininetV2Upsample(64, 3, strides=2)
+        self.module16 = MininetV2Module(64, 3, strides=1, dilation_rate=1)
+
+        self.up3 = MininetV2Upsample(16, 3, strides=2)
+        self.module17 = MininetV2Module(16, 3, strides=1, dilation_rate=1)
+        self.up_last = MininetV2Upsample(num_classes, 3, strides=2)
+
+    def call(self, inputs, training=None, mask=None, aux_loss=False, upsample=1):
+
+        x = self.down1(inputs, training=training)
+        x = self.down2(x, training=training)
+        x = self.module1(x, training=training)
+        x = self.module2(x, training=training)
+        x = self.down3(x, training=training)
+        x = self.module6(x, training=training)
+        x = self.module7(x, training=training)
+        x = self.module8(x, training=training)
+        x = self.module9(x, training=training)
+        x = self.down4(x, training=training)
+        x = self.module10(x, training=training)
+        x = self.module11(x, training=training)
+        x = self.module12(x, training=training)
+        x = self.module13(x, training=training)
+        x = self.up1(x, training=training)
+        x = self.module14(x, training=training)
+        x = self.module15(x, training=training)
+        x = self.up2(x, training=training)
+        x = self.module16(x, training=training)
+        x = self.up3(x, training=training)
+        x = self.module17(x, training=training)
+
+        x = self.up_last(x, last=True, training=training)
 
         if upsample > 1:
             x = upsampling(x, upsample)

@@ -217,6 +217,7 @@ class Loader:
             label = cv2.imread(random_labels[index], 0)
             mask_image = mask[index, :, :]
 
+
             # Reshape images if its needed
             if img.shape[1] != self.width or img.shape[0] != self.height:
                 img = cv2.resize(img, (self.width, self.height), interpolation=cv2.INTER_AREA)
