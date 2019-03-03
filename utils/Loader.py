@@ -5,7 +5,9 @@ import tensorflow as tf
 from tensorflow.keras.utils import to_categorical
 import glob
 import cv2
-from augmenters import get_augmenter
+import sys
+sys.path.append("../")
+from utils.augmenters import get_augmenter
 
 np.random.seed(7)
 

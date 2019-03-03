@@ -90,7 +90,7 @@ def generate_image(image_scores, output_dir, dataset, loader, train=False):
     name = name_split[-1].replace('.jpg', '.png').replace('.jpeg', '.png')
     cv2.imwrite(os.path.join(out_dir, name), image)
 
-def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], preprocess_mode=None, time_exect=False):
+def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], preprocess_mode=None, time_exect=False, model_upsample=1):
     x = preprocess(batch_images, mode=preprocess_mode)
     [x] = convert_to_tensors([x])
 
@@ -103,9 +103,9 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
                                           method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
 
         pre = time.time()
-        y_scaled = model(x_scaled, training=False, aux_loss=False)
+        y_scaled = model(x_scaled, training=False, aux_loss=False, upsample=model_upsample)
         if time_exect and scale == 1:
-            print("seconds to inference: " + str((time.time()-pre)*1000))  + " ms"
+            print("seconds to inference: " + str((time.time()-pre)*1000) + " ms")
 
         #  rescale the output
         y_scaled = tf.image.resize_images(y_scaled, (x.shape[1].value, x.shape[2]),
@@ -115,7 +115,7 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
 
         if flip_inference:
             # calculates flipped scores
-            y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False, aux_loss=False))
+            y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False, aux_loss=False, upsample=model_upsample))
             # resize to rela scale
             y_flipped_ = tf.image.resize_images(y_flipped_, (x.shape[1].value, x.shape[2]),
                                                 method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
@@ -129,7 +129,7 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
     return y_
 
 # get accuracy and miou from a model
-def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False, preprocess_mode=None, time_exect=False, labels_resize_factor=1):
+def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False, preprocess_mode=None, time_exect=False, labels_resize_factor=1, model_upsample=1):
     if train:
         loader.index_train = 0
     else:
@@ -142,10 +142,10 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
     else:
         samples = len(loader.image_test_list)
 
-    for step in xrange(samples):  # for every batch
+    for step in range(samples):  # for every batch
         x, y, mask = loader.get_batch(size=1, train=train, augmenter=False, labels_resize_factor=labels_resize_factor)
         [y] = convert_to_tensors([y])
-        y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode, time_exect=time_exect)
+        y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode, time_exect=time_exect, model_upsample=model_upsample)
         # generate images
         if write_images:
             generate_image(y_[0,:,:,:], 'images_out', loader.dataFolderPath, loader, train)

@@ -3,6 +3,7 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 import os
 import nets.Network as Segception
+import nets.MiniNetv2 as MiniNetv2
 import utils.Loader as Loader
 from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, get_metrics
 import time
@@ -15,9 +16,9 @@ np.random.seed(7)
 # Trains the model for certains epochs on a dataset
 def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4,
           saver=None, variables_to_optimize=None, evaluation=True, name_best_model = 'weights/best', preprocess_mode=None,
-          aux_loss=False, labels_resize_factor=1):
+          aux_loss=False, labels_resize_factor=1, model_upsample_eval=1):
     training_samples = len(loader.image_train_list)
-    steps_per_epoch = (training_samples / batch_size) + 1
+    steps_per_epoch = int(training_samples / batch_size) + 1
     best_miou = 0
 
     for epoch in range(epochs):  # for each epoch
@@ -30,11 +31,11 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
                 x = preprocess(x, mode=preprocess_mode)
                 [x, y, mask] = convert_to_tensors([x, y, mask])
                 if aux_loss:
-                    y_, aux_y_ = model(x, training=True, aux_loss=aux_loss)  # get output of the model
+                    y_, aux_y_ = model(x, training=True, aux_loss=aux_loss, upsample=1)  # get output of the model
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask) +\
                            tf.losses.softmax_cross_entropy(y, aux_y_, weights=mask)  # compute loss
                 else:
-                    y_ = model(x, training=True, aux_loss=aux_loss)  # get output of the model
+                    y_ = model(x, training=True, aux_loss=aux_loss, upsample=1)  # get output of the model
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)  # compute loss
 
 
@@ -46,12 +47,12 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
 
         if evaluation:
             # get metrics
-            train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor)
+            #train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
             test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
-                                              scales=[1], preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor)
+                                              scales=[1], preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
 
-            print('Train accuracy: ' + str(train_acc.numpy()))
-            print('Train miou: ' + str(train_miou))
+            #print('Train accuracy: ' + str(train_acc.numpy()))
+            #print('Train miou: ' + str(train_miou))
             print('Test accuracy: ' + str(test_acc.numpy()))
             print('Test miou: ' + str(test_miou))
             print('')
@@ -74,11 +75,11 @@ if __name__ == "__main__":
     n_classes = 11
     batch_size = 4
     epochs = 1000
-    width = 512
-    height = 256
+    width = 960
+    height = 720
     labels_resize_factor = 2
     channels = 3
-    lr = 1.5e-4
+    lr = 1e-3
     name_best_model = 'weights/camvid/best'
     dataset_path = 'Datasets/camvid'
     preprocess_mode = 'imagenet'  #possible values 'imagenet', 'normalize',None
@@ -87,7 +88,7 @@ if __name__ == "__main__":
                            width=width, height=height, channels=channels, median_frequency=0.0)
 
     # build model and optimizer
-    model = Segception.Segception_small(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels), labels_resize_factor=labels_resize_factor)
+    model = MiniNetv2.MiniNetv2(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
 
     # optimizer
     learning_rate = tfe.Variable(lr)
@@ -110,11 +111,11 @@ if __name__ == "__main__":
 
     train(loader=loader, optimizer=optimizer, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate,
           init_lr=lr, saver=saver_model, variables_to_optimize=variables_to_optimize, name_best_model=name_best_model,
-          evaluation=True, aux_loss=False, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor)
+          evaluation=True, aux_loss=False, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample_eval=labels_resize_factor)
 
     # Test best model
     print('Testing model')
-    test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=True, scales=[0.75,  1, 1.5],
-                                      write_images=True, preprocess_mode=preprocess_mode, time_exect=True, labels_resize_factor=1)
+    test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=True, scales=[1],
+                                      write_images=True, preprocess_mode=preprocess_mode, time_exect=True, labels_resize_factor=1, model_upsample=labels_resize_factor)
     print('Test accuracy: ' + str(test_acc.numpy()))
     print('Test miou: ' + str(test_miou))

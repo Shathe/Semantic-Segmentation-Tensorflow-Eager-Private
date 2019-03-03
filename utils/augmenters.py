@@ -53,7 +53,7 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
                 value_flip2=0
 
 
-            value_add = random.uniform(-10, 10)
+            value_add = int(random.uniform(-10, 10))
             value_Multiply = random.uniform(0.95, 1.10)
             #value_GaussianBlur = random.uniform(0.0,0.05)
             ContrastNormalization = random.uniform(0.90, 1.20)
