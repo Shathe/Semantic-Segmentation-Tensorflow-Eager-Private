@@ -6,7 +6,7 @@ import nets.Network as Segception
 import nets.MiniNetv2 as MiniNetv2
 import utils.Loader as Loader
 from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, get_metrics
-import time
+import cv2
 # enable eager mode
 tf.enable_eager_execution()
 tf.set_random_seed(7)
@@ -38,7 +38,6 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
                     y_ = model(x, training=True, aux_loss=aux_loss, upsample=1)  # get output of the model
                     loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)  # compute loss
 
-
                 if show_loss: print('Training loss: ' + str(loss.numpy()))
 
             # Gets gradients and applies them
@@ -47,12 +46,12 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
 
         if evaluation:
             # get metrics
-            train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
+            #train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode, labels_resize_factor=1, model_upsample=model_upsample_eval)
             test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
-                                              scales=[1], preprocess_mode=preprocess_mode, labels_resize_factor=labels_resize_factor, model_upsample=model_upsample_eval)
+                                              scales=[1], preprocess_mode=preprocess_mode, labels_resize_factor=1, model_upsample=model_upsample_eval)
 
-            print('Train accuracy: ' + str(train_acc.numpy()))
-            print('Train miou: ' + str(train_miou))
+            #print('Train accuracy: ' + str(train_acc.numpy()))
+            #print('Train miou: ' + str(train_miou))
             print('Test accuracy: ' + str(test_acc.numpy()))
             print('Test miou: ' + str(test_miou))
             print('')
@@ -73,13 +72,13 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
 
     n_classes = 11
-    batch_size = 1
-    epochs = 1000
-    width = 1024
-    height = 512
+    batch_size = 6
+    epochs = 0
+    width = 960
+    height = 720
     labels_resize_factor = 2
     channels = 3
-    lr = 1e-4
+    lr = 1e-3
     name_best_model = 'weights/camvid/best'
     dataset_path = 'Datasets/camvid'
     preprocess_mode = 'imagenet'  #possible values 'imagenet', 'normalize',None
@@ -88,7 +87,6 @@ if __name__ == "__main__":
                            width=width, height=height, channels=channels, median_frequency=0.0)
 
     # build model and optimizer
-    #model = MiniNetv2.MiniNetv2(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
     model = Segception.ERFNet(num_classes=n_classes, weights='imagenet', input_shape=(None, None, channels))
 
     # optimizer

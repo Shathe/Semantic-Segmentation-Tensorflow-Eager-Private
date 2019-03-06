@@ -146,6 +146,8 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
         x, y, mask = loader.get_batch(size=1, train=train, augmenter=False, labels_resize_factor=labels_resize_factor)
         [y] = convert_to_tensors([y])
         y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode, time_exect=time_exect, model_upsample=model_upsample)
+
+
         # generate images
         if write_images:
             generate_image(y_[0,:,:,:], 'images_out', loader.dataFolderPath, loader, train)
@@ -157,7 +159,7 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
 
         labels, predictions = erase_ignore_pixels(labels=tf.argmax(y, 1), predictions=tf.argmax(y_, 1), mask=mask)
         accuracy(labels, predictions)
-        conf_matrix += confusion_matrix(labels, predictions, labels=range(0, n_classes))
+        conf_matrix += confusion_matrix(labels.numpy(), predictions.numpy(), labels=range(0, n_classes))
 
     # get the train and test accuracy from the model
     return accuracy.result(), compute_iou(conf_matrix)

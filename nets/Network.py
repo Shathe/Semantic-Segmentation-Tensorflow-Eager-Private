@@ -479,6 +479,9 @@ class ERFNet(tf.keras.Model):
         self.up1 = ERFNetUpsample(64)
         self.mod14 = ERFNetModule(64, dilation_rate=1)
         self.mod15 = ERFNetModule(64, dilation_rate=1)
+        self.up2 = ERFNetUpsample(16)
+        self.mod16 = ERFNetModule(16, dilation_rate=1)
+        self.mod17 = ERFNetModule(16, dilation_rate=1)
         self.up3 = ERFNetUpsample(num_classes)
 
     def call(self, inputs, training=None, aux_loss=False, upsample=1):
@@ -505,6 +508,9 @@ class ERFNet(tf.keras.Model):
         x = self.up1(x, training=training) + b
         x = self.mod14(x, training=training)
         x = self.mod15(x, training=training)
+        #x = self.up2(x, training=training)
+        #x = self.mod16(x, training=training)
+        #x = self.mod17(x, training=training)
         x = self.up3(x, training=training, last=True)
 
         if upsample > 1:

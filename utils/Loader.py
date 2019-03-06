@@ -7,7 +7,7 @@ import glob
 import cv2
 import sys
 sys.path.append("../")
-from utils.augmenters import get_augmenter
+from augmenters import get_augmenter
 
 np.random.seed(7)
 
@@ -216,6 +216,7 @@ class Loader:
 
             label = cv2.imread(random_labels[index], 0)
             mask_image = mask[index, :, :]
+
 
 
             # Reshape images if its needed
